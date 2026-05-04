@@ -1,6 +1,7 @@
 import azure.functions as func
 import azure.durable_functions as df
 import os, json, time, requests, re
+from datetime import datetime, timedelta, timezone
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -50,6 +51,7 @@ def report_activity(order: dict) -> str:
         ContainerGroupRestartPolicy, ContainerGroupIdentity, ResourceIdentityType
     )
     from azure.identity import DefaultAzureCredential
+    from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 
     sub_id = os.environ["SUBSCRIPTION_ID"]
     rg = os.environ["REPORT_RG"]
@@ -129,7 +131,39 @@ def report_activity(order: dict) -> str:
         if final_state not in ("Succeeded", "Terminated"):
             raise TimeoutError("Report container did not finish within 5 minutes")
 
-        return f"{os.environ['STORAGE_ACCOUNT_URL']}/reports/{order_id}.pdf"
+        # return f"{os.environ['STORAGE_ACCOUNT_URL']}/reports/{order_id}.pdf"
+        
+        storage_account_url = os.environ["STORAGE_ACCOUNT_URL"]
+        account_name = storage_account_url.replace("https://", "").split(".")[0]
+        blob_name = f"{order_id}.pdf"
+
+        sas_credential = DefaultAzureCredential(
+            managed_identity_client_id=os.environ["AZURE_CLIENT_ID"]
+        )
+
+        blob_service_client = BlobServiceClient(
+            account_url=storage_account_url,
+            credential=sas_credential
+        )
+
+        start_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+        expiry_time = datetime.now(timezone.utc) + timedelta(hours=2)
+
+        user_delegation_key = blob_service_client.get_user_delegation_key(
+            key_start_time=start_time,
+            key_expiry_time=expiry_time
+        )
+
+        sas_token = generate_blob_sas(
+            account_name=account_name,
+            container_name="reports",
+            blob_name=blob_name,
+            user_delegation_key=user_delegation_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=expiry_time
+        )
+
+        return f"{storage_account_url}/reports/{blob_name}?{sas_token}"
 
     finally:
         try:
