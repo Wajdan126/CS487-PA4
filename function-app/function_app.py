@@ -1,7 +1,7 @@
 import azure.functions as func
 import azure.durable_functions as df
 import os, json, time, requests, re
-from datetime import datetime, timedelta, timezone
+
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
