@@ -3,4 +3,3 @@ azure-functions-durable
 azure-identity
 azure-mgmt-containerinstance
 requests
-azure-storage-blob
